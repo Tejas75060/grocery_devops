@@ -1,0 +1,19 @@
+filebeat.inputs:
+  - type: container
+    paths:
+      - /var/lib/docker/containers/*/*.log
+
+# Enrich with Docker metadata (container name/image/labels).
+processors:
+  - add_docker_metadata:
+      host: "unix:///var/run/docker.sock"
+  - decode_json_fields:
+      fields: ["message"]
+      target: "json"
+      overwrite_keys: true
+
+# Ship to Logstash for parsing/routing.
+output.logstash:
+  hosts: ["logstash:5044"]
+
+logging.level: info
