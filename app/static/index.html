@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grocery Delivery Platform</title>
+  <style>
+    :root { --green:#2e7d32; --bg:#f4f6f8; --card:#fff; --muted:#666; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+           margin:0; background:var(--bg); color:#1a1a1a; }
+    header { background:var(--green); color:#fff; padding:16px 24px; }
+    header h1 { margin:0; font-size:20px; }
+    header p { margin:4px 0 0; opacity:.85; font-size:13px; }
+    main { max-width:1100px; margin:24px auto; padding:0 16px;
+           display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+    .card { background:var(--card); border-radius:10px; padding:18px;
+            box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .card h2 { margin-top:0; font-size:16px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #eee; }
+    th { color:var(--muted); font-weight:600; }
+    input, button { font-size:14px; padding:8px 10px; border-radius:6px;
+                    border:1px solid #ccc; }
+    button { background:var(--green); color:#fff; border:none; cursor:pointer; }
+    button:hover { opacity:.92; }
+    .row { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+    .row label { width:90px; font-size:13px; color:var(--muted); }
+    .badge { padding:2px 8px; border-radius:12px; font-size:11px; color:#fff; }
+    .full { grid-column:1 / -1; }
+    .qty { width:60px; }
+    .muted { color:var(--muted); font-size:12px; }
+    .line { display:flex; gap:8px; align-items:center; margin:4px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🛒 Grocery Delivery Platform</h1>
+    <p>Order processing · inventory · delivery assignment — DevOps demo dashboard</p>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Inventory</h2>
+      <table id="inv"><thead>
+        <tr><th>SKU</th><th>Name</th><th>Price</th><th>Stock</th><th>Add</th></tr>
+      </thead><tbody></tbody></table>
+    </section>
+
+    <section class="card">
+      <h2>Place an order</h2>
+      <div class="row"><label>Customer</label>
+        <input id="cust" placeholder="Jane Doe" value="Jane Doe" /></div>
+      <div class="row"><label>Address</label>
+        <input id="addr" placeholder="12 Market St" value="12 Market St" /></div>
+      <div id="cart"><p class="muted">Click “Add” on inventory rows to build a cart.</p></div>
+      <button onclick="placeOrder()">Place order</button>
+      <p id="orderMsg" class="muted"></p>
+    </section>
+
+    <section class="card full">
+      <h2>Orders</h2>
+      <table id="orders"><thead>
+        <tr><th>ID</th><th>Customer</th><th>Status</th><th>Total</th>
+            <th>Agent</th><th>Actions</th></tr>
+      </thead><tbody></tbody></table>
+    </section>
+  </main>
+
+  <script>
+    const cart = {};
+    const colors = { PLACED:'#777', CONFIRMED:'#1565c0', ASSIGNED:'#6a1b9a',
+      OUT_FOR_DELIVERY:'#ef6c00', DELIVERED:'#2e7d32', CANCELLED:'#b71c1c' };
+
+    async function api(path, method='GET', body) {
+      const opt = { method, headers:{'Content-Type':'application/json'} };
+      if (body) opt.body = JSON.stringify(body);
+      const r = await fetch(path, opt);
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      return r.json();
+    }
+
+    async function loadInventory() {
+      const items = await api('/api/inventory');
+      const tb = document.querySelector('#inv tbody');
+      tb.innerHTML = '';
+      items.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${p.sku}</td><td>${p.name}</td>
+          <td>$${p.price.toFixed(2)}</td><td>${p.stock}</td>
+          <td><button onclick="addToCart('${p.sku}')">Add</button></td>`;
+        tb.appendChild(tr);
+      });
+    }
+
+    function addToCart(sku) { cart[sku] = (cart[sku]||0)+1; renderCart(); }
+    function renderCart() {
+      const div = document.getElementById('cart');
+      const keys = Object.keys(cart);
+      if (!keys.length) { div.innerHTML = '<p class="muted">Cart empty.</p>'; return; }
+      div.innerHTML = keys.map(sku => `<div class="line">
+        <span>${sku}</span>
+        <input class="qty" type="number" min="1" value="${cart[sku]}"
+          onchange="cart['${sku}']=parseInt(this.value)||1">
+        <button onclick="delete cart['${sku}'];renderCart()">✕</button>
+      </div>`).join('');
+    }
+
+    async function placeOrder() {
+      const items = Object.entries(cart).map(([sku,quantity])=>({sku,quantity}));
+      if (!items.length) return;
+      try {
+        const o = await api('/api/orders','POST',{
+          customer_name:document.getElementById('cust').value,
+          address:document.getElementById('addr').value, items });
+        document.getElementById('orderMsg').textContent =
+          `Order #${o.id} placed — total $${o.total.toFixed(2)}`;
+        Object.keys(cart).forEach(k=>delete cart[k]); renderCart();
+        loadInventory(); loadOrders();
+      } catch(e) {
+        document.getElementById('orderMsg').textContent = 'Error: '+e.message;
+      }
+    }
+
+    async function loadOrders() {
+      const orders = await api('/api/orders');
+      const tb = document.querySelector('#orders tbody');
+      tb.innerHTML = '';
+      orders.forEach(o => {
+        const tr = document.createElement('tr');
+        const next = { CONFIRMED:`<button onclick="assign(${o.id})">Assign</button>`,
+          ASSIGNED:`<button onclick="setStatus(${o.id},'OUT_FOR_DELIVERY')">Dispatch</button>`,
+          OUT_FOR_DELIVERY:`<button onclick="setStatus(${o.id},'DELIVERED')">Deliver</button>` };
+        tr.innerHTML = `<td>${o.id}</td><td>${o.customer_name}</td>
+          <td><span class="badge" style="background:${colors[o.status]||'#777'}">${o.status}</span></td>
+          <td>$${o.total.toFixed(2)}</td>
+          <td>${o.delivery? o.delivery.agent_name : '—'}</td>
+          <td>${next[o.status]||''}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+
+    async function assign(id){ await api(`/api/orders/${id}/assign`,'POST',{}); loadOrders(); }
+    async function setStatus(id,status){
+      await api(`/api/orders/${id}/status`,'PATCH',{status}); loadOrders();
+    }
+
+    loadInventory(); loadOrders();
+    setInterval(loadOrders, 5000);
+  </script>
+</body>
+</html>
