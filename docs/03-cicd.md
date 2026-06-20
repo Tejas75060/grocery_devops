@@ -46,5 +46,28 @@ docker run -d --name jenkins -p 8080:8080 -p 50000:50000 \
 # unlock with: docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
+## Self-configuring demo (used for the screenshots)
+`jenkins/setup-jenkins.sh` runs a controller that needs **no setup wizard** — it
+applies `jenkins/casc.yaml` (Configuration-as-Code), installs the required
+plugins + build tools, starts a local registry on `:5051`, and pre-creates the
+`grocery-ci` pipeline (`jenkins/pipeline.groovy`).
+
+```bash
+bash jenkins/setup-jenkins.sh          # http://localhost:8080  (admin/admin)
+# trigger a build:
+curl -s -XPOST http://admin:admin@localhost:8080/job/grocery-ci/build
+```
+
+The demo pipeline runs **Build & Test inside a `python:3.11` container** (sharing
+the workspace via `--volumes-from jenkins`) so dependency wheels resolve cleanly
+regardless of the controller's Python version. Stages: **Checkout → Build & Test
+→ Docker Build → Push to Registry (:5051) → Deploy**. Verified green: 6 tests
+pass and the image is pushed to the local registry (tags `<build#>` + `latest`).
+The Deploy stage is an echo in the demo; the production `Jenkinsfile` does a real
+`kubectl set image` rollout given a kubeconfig credential.
+
+📸 Evidence in `docs/screenshots/03-jenkins/`: pipeline #2/#3 green, console with
+all stages SUCCESS, build detail (git revision + tests), dashboard.
+
 📸 Screenshot targets → `docs/screenshots/03-jenkins/`: the pipeline stage view
 with all stages green, and the JUnit test trend.

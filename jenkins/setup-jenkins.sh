@@ -30,9 +30,15 @@ docker exec jenkins jenkins-plugin-cli --plugins \
 
 echo "==> Installing build tools inside the controller (python3, docker-cli, git)"
 docker exec -u root jenkins bash -c '
-  apt-get update -qq &&
-  apt-get install -y -qq python3 python3-venv python3-pip git curl >/dev/null &&
-  (command -v docker || (curl -fsSL https://download.docker.com/linux/static/stable/$(uname -m | sed s/aarch64/aarch64/;s/x86_64/x86_64/)/docker-27.1.1.tgz -o /tmp/d.tgz && tar xzf /tmp/d.tgz -C /tmp && cp /tmp/docker/docker /usr/local/bin/)) &&
+  set -e
+  apt-get update -qq
+  apt-get install -y -qq python3 python3-venv python3-pip git curl >/dev/null
+  if ! command -v docker >/dev/null; then
+    ARCH=$(uname -m)   # aarch64 on Apple Silicon, x86_64 on Intel
+    curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-27.1.1.tgz" -o /tmp/d.tgz
+    tar xzf /tmp/d.tgz -C /tmp
+    cp /tmp/docker/docker /usr/local/bin/docker
+  fi
   chmod 666 /var/run/docker.sock || true
 ' >/tmp/jtools.log 2>&1 || true
 
