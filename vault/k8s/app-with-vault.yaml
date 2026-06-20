@@ -1,0 +1,24 @@
+# Example: the grocery app configured to pull DB creds from in-cluster Vault.
+# Apply AFTER vault-dev.yaml and after seeding secrets (see docs/07-vault.md).
+# This replaces the plain-Secret DATABASE_URL with Vault env injection:
+# app/config.py reads VAULT_ADDR/VAULT_TOKEN and overrides DATABASE_URL.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grocery-app
+  namespace: grocery
+spec:
+  template:
+    spec:
+      containers:
+        - name: grocery-app
+          env:
+            - name: VAULT_ADDR
+              value: "http://vault.vault.svc.cluster.local:8200"
+            - name: VAULT_SECRET_PATH
+              value: "secret/data/grocery"
+            - name: VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: vault-token
+                  key: token
