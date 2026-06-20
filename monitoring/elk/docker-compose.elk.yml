@@ -31,7 +31,7 @@ services:
       - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
     ports:
       - "5044:5044"   # beats input
-      - "5000:5000"   # tcp json input
+      - "5001:5000"   # tcp json input (5001 on host; macOS AirPlay grabs :5000)
     environment:
       - LS_JAVA_OPTS=-Xms256m -Xmx256m
 

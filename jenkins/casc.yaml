@@ -1,0 +1,59 @@
+# Jenkins Configuration-as-Code: skips the setup wizard and pre-creates a
+# pipeline job that runs the repo's CI stages. Mounted at /var/jenkins_home/casc.yaml.
+jenkins:
+  systemMessage: "Grocery Delivery Platform — CI/CD (configured via JCasC)"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: admin
+          password: admin
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: true
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+
+jobs:
+  - script: >
+      pipelineJob('grocery-ci') {
+        definition {
+          cps {
+            sandbox(true)
+            script('''
+              pipeline {
+                agent any
+                options { timestamps() }
+                environment {
+                  REGISTRY = 'host.docker.internal:5051'
+                  IMAGE    = "grocery-app"
+                }
+                stages {
+                  stage('Checkout') {
+                    steps { git branch: 'main', url: 'https://github.com/Tejas75060/grocery_devops.git' }
+                  }
+                  stage('Build') {
+                    steps { sh 'python3 -m venv .venv && . .venv/bin/activate && pip install -q -U pip && pip install -q -r app/requirements.txt' }
+                  }
+                  stage('Test') {
+                    steps { sh '. .venv/bin/activate && pytest -q --junitxml=reports/junit.xml' }
+                    post { always { junit allowEmptyResults: true, testResults: 'reports/junit.xml' } }
+                  }
+                  stage('Docker Build') {
+                    steps { sh 'docker build -t ${REGISTRY}/${IMAGE}:${BUILD_NUMBER} -t ${REGISTRY}/${IMAGE}:latest .' }
+                  }
+                  stage('Push to Registry') {
+                    steps { sh 'docker push ${REGISTRY}/${IMAGE}:${BUILD_NUMBER} && docker push ${REGISTRY}/${IMAGE}:latest' }
+                  }
+                  stage('Deploy') {
+                    steps { echo 'Deploy stage: kubectl set image on the kind cluster (requires kubeconfig credential — see Jenkinsfile).' }
+                  }
+                }
+              }
+            '''.stripIndent())
+          }
+        }
+      }
