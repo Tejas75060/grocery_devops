@@ -1,0 +1,39 @@
+# Local dev stack: FastAPI app + PostgreSQL.
+# Usage: docker compose up --build
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: grocery-db
+    environment:
+      POSTGRES_USER: grocery
+      POSTGRES_PASSWORD: grocery
+      POSTGRES_DB: grocery
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U grocery -d grocery"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: grocery-app:local
+    container_name: grocery-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_NAME: Grocery Delivery Platform
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://grocery:grocery@db:5432/grocery
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:

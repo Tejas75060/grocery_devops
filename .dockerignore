@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.db
+.git/
+.github/
+terraform/
+k8s/
+monitoring/
+docs/
+*.md
+.env
+*.log
