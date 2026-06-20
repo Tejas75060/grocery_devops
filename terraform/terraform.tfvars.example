@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars and adjust.
+# For Colima instead of Docker Desktop, point at its socket:
+# docker_host = "unix:///Users/<you>/.colima/default/docker.sock"
+
+app_image     = "grocery-app:local"
+app_port      = 8000
+registry_port = 5000
+# postgres_password = "change-me"
