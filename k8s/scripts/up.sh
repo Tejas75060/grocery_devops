@@ -23,8 +23,17 @@ kind load docker-image "$IMAGE" --name "$CLUSTER"
 
 echo "==> Installing ingress-nginx"
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
-kubectl -n ingress-nginx wait --for=condition=ready pod \
-  --selector=app.kubernetes.io/component=controller --timeout=180s
+# Pin the controller to the control-plane node (which carries the :80/:443 host
+# port mappings in kind-config.yaml). Recent manifests drop the ingress-ready
+# nodeSelector, which can otherwise schedule it on a worker with no host port.
+kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type merge -p '{
+  "spec":{"template":{"spec":{
+    "nodeSelector":{"ingress-ready":"true","kubernetes.io/os":"linux"},
+    "tolerations":[
+      {"key":"node-role.kubernetes.io/control-plane","operator":"Equal","effect":"NoSchedule"},
+      {"key":"node-role.kubernetes.io/master","operator":"Equal","effect":"NoSchedule"}
+    ]}}}}'
+kubectl -n ingress-nginx rollout status deploy/ingress-nginx-controller --timeout=180s
 
 echo "==> Installing metrics-server (HPA needs it)"
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
