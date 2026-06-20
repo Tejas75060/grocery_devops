@@ -1,0 +1,23 @@
+# Ingress for the app. Works with the ingress-nginx controller that ships
+# with kind (see k8s/scripts/up.sh). Access via http://grocery.localhost
+# or http://localhost after adding "127.0.0.1 grocery.localhost" to /etc/hosts.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grocery-ingress
+  namespace: grocery
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: grocery.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grocery-app
+                port:
+                  number: 80

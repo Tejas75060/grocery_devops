@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grocery-config
+  namespace: grocery
+data:
+  APP_NAME: "Grocery Delivery Platform"
+  ENVIRONMENT: "production"
+  # DB host/port/name are non-secret; credentials come from the Secret.
+  DB_HOST: "grocery-db"
+  DB_PORT: "5432"
+  DB_NAME: "grocery"
