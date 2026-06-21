@@ -91,8 +91,114 @@ make vault-up         # dev Vault + seed secret/grocery
 ```
 
 > **Prerequisites by stage:** Steps 2–7 require **Docker** (Docker Desktop or
-> Colima) — not installed on the build machine. Steps 4–5 also need
-> `terraform`, `kind`, and `kubectl` (`brew install terraform kind kubectl`).
+> Colima). Steps 4–5 also need `terraform`, `kind`, and `kubectl`
+> (`brew install terraform kind kubectl`).
+
+---
+
+## Running every stack — full guide
+
+Each stack runs independently. Start Docker Desktop first, then pick the stacks
+you want. Ports used: app `8000`, Jenkins `8080`, Prometheus `9090`,
+Grafana `3000`, Kibana `5601`, Elasticsearch `9200`, Vault `8200`,
+K8s Ingress `80`.
+
+### 0. One-time prerequisites
+```bash
+# macOS (Homebrew). Docker Desktop must be installed & running.
+brew install kind kubectl terraform
+```
+
+### A. Docker — app + database (frontend is served by the backend)
+```bash
+docker compose up --build -d     # or: make compose-up
+docker compose ps                # db + app, both "healthy"
+```
+`docker compose up` starts **two** containers together — `grocery-db`
+(PostgreSQL) and `grocery-app` (FastAPI backend **+** the dashboard UI). The DB
+starts first; the app waits for it via a healthcheck.
+- Dashboard + API: **http://localhost:8000**   ·   Swagger: **http://localhost:8000/docs**
+- Stop: `docker compose down`  (add `-v` to also wipe the DB volume)
+
+### B. Kubernetes — kind cluster + HPA autoscaling
+```bash
+make k8s-up        # builds image, creates kind cluster, installs ingress-nginx
+                   # + metrics-server, applies all manifests, waits for rollout
+echo "127.0.0.1 grocery.localhost" | sudo tee -a /etc/hosts   # one-time
+```
+- App via Ingress: **http://grocery.localhost**
+- Inspect: `kubectl -n grocery get pods,svc,ingress,hpa`
+- Demo autoscaling: `bash k8s/scripts/load-test.sh` in one terminal,
+  `kubectl -n grocery get hpa -w` in another (watch pods scale 2→10).
+- Stop: `make k8s-down`  (`kind delete cluster --name grocery`)
+
+### C. Prometheus + Grafana — metrics (deploy onto the K8s cluster)
+> Requires the Kubernetes cluster from step B to be running.
+```bash
+make monitoring-up        # deploys Prometheus + Grafana into the 'monitoring' ns
+# then port-forward to open them in the browser:
+kubectl -n monitoring port-forward svc/prometheus 9090:9090   # http://localhost:9090
+kubectl -n monitoring port-forward svc/grafana    3000:3000   # http://localhost:3000
+```
+- Prometheus targets: **http://localhost:9090/targets** (grocery-app pods = UP)
+- Grafana: **http://localhost:3000** — login `admin` / `admin`, open the
+  pre-provisioned **“Grocery Delivery Platform”** dashboard.
+
+### D. Jenkins — CI/CD pipeline
+```bash
+bash jenkins/setup-jenkins.sh     # self-configuring controller (no setup wizard)
+```
+- Jenkins UI: **http://localhost:8080** — login `admin` / `admin`
+- The `grocery-ci` job is pre-created. Trigger a build:
+  ```bash
+  curl -s -XPOST http://admin:admin@localhost:8080/job/grocery-ci/build
+  ```
+- Pipeline stages: Checkout → Build & Test → Docker Build → Push (local
+  registry `:5051`) → Deploy.
+- Stop: `docker rm -f jenkins grocery-registry-ci`
+
+### E. ELK — centralized logging
+```bash
+make elk-up        # Elasticsearch + Logstash + Kibana + Filebeat (docker compose)
+```
+- Kibana: **http://localhost:5601** → Discover → data view `grocery-logs-*`
+- Elasticsearch: **http://localhost:9200**
+- Stop: `docker compose -f monitoring/elk/docker-compose.elk.yml down -v`
+
+### F. Vault — secrets
+```bash
+make vault-up      # dev Vault + seeds secret/grocery
+```
+- Vault UI: **http://localhost:8200**  (token: `root`)
+- Run the app against Vault:
+  ```bash
+  export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=root \
+         VAULT_SECRET_PATH=secret/data/grocery
+  make run     # startup log: "Loaded database_url from Vault"
+  ```
+- Stop: `docker rm -f vault`
+
+### Terraform — provision the local stack instead of compose
+> Alternative to **A**: provisions network + Postgres + app + a local registry
+> via the Docker provider. Stop the compose stack first (same container names).
+```bash
+docker build -t grocery-app:local .
+cd terraform && terraform init && terraform apply -auto-approve
+terraform output          # app_url, registry_url, database_container
+terraform destroy -auto-approve   # tear down
+```
+
+### Tear everything down
+```bash
+docker compose down -v
+docker compose -f monitoring/elk/docker-compose.elk.yml down -v
+docker rm -f jenkins grocery-registry-ci vault
+cd terraform && terraform destroy -auto-approve; cd ..
+make k8s-down
+```
+
+> ⚠️ Running **all** stacks at once is memory-heavy (Elasticsearch alone wants
+> ~1 GB). On a laptop, give Docker Desktop 6–8 GB, or run stacks a few at a time.
 
 ---
 
