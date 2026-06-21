@@ -26,3 +26,4 @@ crash.log
 # Logs
 *.log
 terraform.tfvars
+docs/_doc.html
